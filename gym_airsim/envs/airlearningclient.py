@@ -1,3 +1,5 @@
+
+
 import airsim # sudo pip install airsim
 
 import numpy as np
@@ -5,16 +7,43 @@ import math
 import time
 import cv2
 import settings
-
+import os
+import gym
+import random
+import tempfile
+import matplotlib.pyplot as plt
+from .random import *
 from PIL import Image
 from pylab import array, uint8, arange
+from random import seed
+from random import random
+from random import randint
+#from random import RandGen
+import numpy as np
 
 import msgs
+
+COLORS = {
+    'red'   : np.array([255, 0, 0]),
+    'blue'  : np.array([0, 0, 255]),
+    'orange' : np.array([255,165,0])
+}
+
+COLOR_NAMES = sorted(list(COLORS.keys()))
+
+# Used to map colors to integers
+COLOR_TO_IDX = {
+    'red'   : 0,
+    'blue'  : 1,
+    'orange' : 2
+}
 
 
 
 class AirLearningClient(airsim.MultirotorClient):
     def __init__(self):
+
+
 
         # connect to the AirSim simulator
         self.client = airsim.MultirotorClient(settings.ip)
@@ -22,9 +51,123 @@ class AirLearningClient(airsim.MultirotorClient):
         self.client.enableApiControl(True)
         self.client.armDisarm(True)
 
-        self.home_pos = self.client.getPosition()
+        #self.client.moveToPositionAsync(-5, 11, -2, 5).join()
+
+        #self.client.hoverAsync().join()
+
+
+
+        print("---------------------------------------------------------")
+
+        #seed(50) #comment
+
+        pose = self.client.simGetVehiclePose()
+
+
+
+        # teleport the drone to any position
+        # pose.position.x_val = randint(-1, 1) #gives an random interger to the agent between the given range
+        pose.position.x_val = np.random.uniform(-2.5,2.5) #uncomment for randomizing the agent
+        #pose.position.x_val = -20.13
+        #pose.position.y_val = -12 #uncomment if you want to give manual values to the agent otherwise use the above thing
+        pose.position.y_val = np.random.uniform(-2.5,2.5) #can be 24 but 23 ##uncomment for randomizing the agent
+
+
+        self.client.simSetVehiclePose(pose, True, "Drone1")
+
+        #time.sleep(5)
+
+
+
+        self.home_pos = self.client.simSetVehiclePose(pose, True, "Drone1")
+
+        print("Randomize coordiantes",pose.position.x_val,pose.position.y_val,-2)
+        #
+        x = pose.position.x_val #uncomment for randomizing the agent
+        y = pose.position.y_val #uncomment for randomizing the agent
+
         self.home_ori = self.client.getOrientation()
-        self.z = -4
+
+
+        # x=random.uniform(0,35)
+        # y=random.uniform(0,35)
+        self.z = -2 #1 #4 1 if the circle is too low #0.4 for realworld
+        print("z",self.z)
+
+
+
+
+
+
+        self.folder = 'images'
+        if not os.path.isdir(self.folder):
+            os.makedirs(self.folder)
+
+        cam = '0'
+
+        self.requests = [airsim.ImageRequest(cam, airsim.ImageType.Scene,)]
+                                          #False,True)]
+        self.i = 0
+
+        # Image responses
+        self.responses = []
+        self.seed()
+
+    def land(self):
+        landed = self.client.getMultirotorState().landed_state
+        if landed == airsim.LandedState.Landed:
+            print("already landed...")
+        else:
+            print("landing...")
+        self.client.landAsync().join()
+
+    #next 3 functions for getting the position
+
+    '''--------------------------------------------------------------
+    Function:  circlepos, dronepos
+    Dev:  Tejaswini
+    Date:    9.01.2022
+    Description: Get the Orientation and position of the circle to calculate x, y, z values
+    --------------------------------------------------------------'''
+    def redcirclepos(self):
+
+        circlepos = self.client.simGetObjectPose("wweed_3").position
+        #print(circlepos)ch
+        x = circlepos.x_val
+        y = circlepos.y_val
+        z = circlepos.z_val
+        #circlepos.position.x_val = np.random.uniform(-2.5,2.5)
+        #print("redpos",np.array([x, y, z]))
+        return np.array([x, y, z])
+
+    def bluecirclepos(self):
+
+        bluecirclepos = self.client.simGetObjectPose("wweed4").position
+        #print(circlepos)ch
+        x = bluecirclepos.x_val
+        y = bluecirclepos.y_val
+        z = bluecirclepos.z_val
+        #circlepos.position.x_val = np.random.uniform(-2.5,2.5)
+        #print("bluepos",np.array([x, y, z]))
+        return np.array([x, y, z])
+
+    def cubepos(self):
+
+        cubepos = self.client.simGetObjectPose("1M_Cube_5").position
+        #print(circlepos)
+        x = cubepos.x_val
+        y = cubepos.y_val
+        z = cubepos.z_val
+        print(np.array([x, y, z]))
+        return np.array([x, y, z])
+    def dronepos(self):
+
+         drone_pos= self.client.simGetVehiclePose(vehicle_name = "Drone1").position
+         x = drone_pos.x_val
+         y = drone_pos.y_val
+         z = drone_pos.z_val
+         print(np.array([x, y, z]))
+         return np.array([x, y, z])
 
     def goal_direction(self, goal, pos):
 
@@ -37,6 +180,13 @@ class AirLearningClient(airsim.MultirotorClient):
         track = math.radians(pos_angle - yaw)
 
         return ((math.degrees(track) - 180) % 360) - 180
+
+    def get_imudata(self):
+
+        imu_data = self.client.getImuData(imu_name = "Imu", vehicle_name = "Drone1")
+
+
+        return imu_data
 
     def getConcatState(self, goal):
 
@@ -66,11 +216,14 @@ class AirLearningClient(airsim.MultirotorClient):
             img_rgba = img1d.reshape(response.height, response.width, 4)
             rgb = cv2.cvtColor(img_rgba, cv2.COLOR_BGRA2BGR)
             grey = cv2.cvtColor(rgb, cv2.COLOR_BGR2GRAY)
+            #print(grey.shape)
         else:
-            print("Something bad happened! Restting AirSim!")
+            print("Something bad happened! Resetting AirSim!")
             self.AirSim_reset()
             grey = np.ones(144,256)
         return grey
+
+
 
     def getScreenRGB(self):
         responses = self.client.simGetImages([airsim.ImageRequest("1", airsim.ImageType.Scene, False, False)])
@@ -101,7 +254,7 @@ class AirLearningClient(airsim.MultirotorClient):
             img2d = np.reshape(img1d, (responses[0].height, responses[0].width))
 
         else:
-            print("Something bad happened! Restting AirSim!")
+            print("Something bad happened! Resetting AirSim!")
             self.AirSim_reset()
             img2d = np.ones((144, 256))
 
@@ -150,7 +303,7 @@ class AirLearningClient(airsim.MultirotorClient):
         # cv2.waitKey(0)
         #total = np.reshape(total, (154,256))
         return total
-        
+
     def Gauss(self,x, a, x0, sigma):
         return a * np.exp(-(x - x0)**2 / (2 * sigma**2))
 
@@ -162,49 +315,162 @@ class AirLearningClient(airsim.MultirotorClient):
         noise = np.random.normal(0,2)
         return((read+noise)/(max_read))
 
+    def seed(self, seed=None):
+        self.rand = RandGen(seed)
+        return [seed]
+
+    def _rand_int(self, low, high):
+        """
+        Generate random integer in [low,high]
+        """
+
+        return self.rand.int(low, high)
+
+
+
+
+
+    def _rand_elem(self, iterable):
+        """
+        Pick a random element in a list
+        """
+
+        lst = list(iterable)
+        idx = self._rand_int(0, len(lst))
+        return lst[idx]
+
+    def target_pos(self):
+        boxPos = []
+
+        boxPos.append(self.redcirclepos())
+        #print("redboxPos",boxPos)
+        boxPos.append(self.bluecirclepos()) # bluecirclepos() it was for blue sphere #cubepos for box
+        #print("boxPos",boxPos)
+        boxColors = ['red', 'blue'] #orange for box
+
+        boxIdx = self._rand_int(0, len(boxPos)) #0
+        print("Boxid",boxIdx) #suppose 0
+        self.target_pos = boxPos[boxIdx] #position of red
+        print("target pos",self .target_pos) #position of red circle
+        self.target_color = boxColors[boxIdx] #color of red
+        print("target_color",self.target_color)
+
+        self.target_Idx = boxIdx
+        print("test", self.target_color, self.target_pos)
+        return self.target_color, self.target_pos
+
+
+
 
     def get_SS_state(self,state):
-        ## -- laser ranger -- ##
-        lidarData = self.client.getLidarData(lidar_name="LidarSensor1",vehicle_name="Drone1")
-        points = np.array(lidarData.point_cloud, dtype=np.dtype('f4'))
-        points = np.reshape(points, (int(points.shape[0]/3), 3))
-        X = points[:,0]
-        Y = points[:,1]
 
-        upper_ind = np.where(Y>0)[0]
-        lower_ind = np.where(Y<0)[0]
-        left_ind = np.where(X<0)[0]
-        right_ind = np.where(X>0)[0]
+        responses = self.client.simGetImages([airsim.ImageRequest("1", airsim.ImageType.Scene, False, False)])
+        response = responses[0]
+        img1d = np.fromstring(response.image_data_uint8, dtype=np.uint8)
+        if((responses[0].width !=0 or responses[0].height!=0)):
+            img_rgba = img1d.reshape(response.height, response.width, 4)
+            rgb = cv2.cvtColor(img_rgba, cv2.COLOR_BGRA2BGR)
+            grey = rgb
 
-        laser_right_ind = right_ind[np.argmin(np.absolute(Y[right_ind]))]
-        laser_left_ind = left_ind[np.argmin(np.absolute(Y[left_ind]))]
-        laser_lower_ind = lower_ind[np.argmin(np.absolute(X[lower_ind]))]
-        laser_upper_ind = upper_ind[np.argmin(np.absolute(X[upper_ind]))]
+            #grey = cv2.cvtColor(rgb, cv2.COLOR_BGR2GRAY)
+            dim = (80,60)
+            grey = cv2.resize(grey, dim, interpolation = cv2.INTER_AREA)
 
-        output = np.absolute([Y[laser_upper_ind],X[laser_right_ind],Y[laser_lower_ind],X[laser_left_ind]])
+            '''
+            from PIL import Images
 
-        ## -- get distance to goal
-        
-        now = self.client.getPosition()
-        xdistance = (state.goal[0] - now.x_val)
-        ydistance = (state.goal[1] - now.y_val)
-        euclidean = np.sqrt(np.power(xdistance,2) + np.power(ydistance,2))
-        sensor_read = self.get_sensor_read(euclidean)
-        # -- append distance to output array -- #
-        if settings.add_gradient:
-            state.c = sensor_read-state.old_source_reading
-            print(state.c)
-            state.c_f = 0.9*state.c_f + 0.1*state.c
-            state.s1 = (state.c-state.c_f)/state.c_f
-            state.s2 = 2*(state.c_f/5.95)-1
+            image = Image.fromarray(grey)
+            grey = np.array(image.resize((244,324)).convert("L"))
+            '''
+            # cv2.imshow("Greyscale",grey)
+            # cv2.waitKey(1)
+            grey = grey.reshape([80,60,3])
 
-            output = np.append(output,[state.s1,state.s2])
-            state.old_source_reading = sensor_read
-            
+
         else:
-            output = np.append(output,sensor_read)
+            print("Something bad happened! Resetting AirSim!")
+            self.AirSim_reset()
+            grey = np.ones(80,60)
 
-        return output   
+
+        self.mission = 'go to the %s sphere' % self.target_color
+
+        output = {"image": grey, "mission":self.mission}
+
+        print("mission",self.mission)
+        print('go to {} of sphere'.format(self.target_color))
+        print("output",output)
+
+
+        return self.target_pos, output
+        '''
+
+
+        responses = self.client.simGetImages([airsim.ImageRequest("1", airsim.ImageType.Scene, False, False)])
+        response = responses[0]
+        img1d = np.fromstring(response.image_data_uint8, dtype=np.uint8)
+        if((responses[0].width !=0 or responses[0].height!=0)):
+            img_rgba = img1d.reshape(response.height, response.width, 4)
+            rgb = cv2.cvtColor(img_rgba, cv2.COLOR_BGRA2BGR)
+            grey = cv2.cvtColor(rgb, cv2.COLOR_BGR2GRAY)
+
+            from PIL import Image
+
+            image = Image.fromarray(grey)
+            grey = np.array(image.resize((244,324)).convert("L"))
+
+        else:
+            print("Something bad happened! Resetting AirSim!")
+            self.AirSim_reset()
+            grey = np.ones(244,324)
+            # cv2.imshow("Greyscale",grey)
+            # cv2.waitKey(1)
+        return grey.reshape([244,324,1])
+
+        '''
+
+
+
+
+
+
+        # self.drone_state = self.client.getMultirotorState()
+        #
+        # self.state["prev_position"] = self.client.state["position"]
+        # self.state["position"] = self.client.drone_state.kinematics_estimated.position
+        # self.state["velocity"] = self.drone_state.kinematics_estimated.linear_velocity
+        #return rgb
+
+    def new(self):
+        self.responses.append(self.client.simGetImages(self.requests) )
+        responses = self.client.simGetImages([airsim.ImageRequest("1", airsim.ImageType.Scene, False, False)])
+        response = responses[0]
+        img1d = np.fromstring(response.image_data_uint8, dtype=np.uint8)
+        if((responses[0].width !=0 or responses[0].height!=0)):
+            img_rgba = img1d.reshape(response.height, response.width, 4)
+
+            rgb = cv2.cvtColor(img_rgba, cv2.COLOR_BGRA2BGR)
+            dim = (80,60)
+            rgb = cv2.resize(rgb, dim, interpolation = cv2.INTER_AREA)
+            #rgb = cv2.cvtColor(img_rgba, cv2.COLOR_BGRA2BGR)
+            #grey = cv2.cvtColor(rgb, cv2.COLOR_BGR2GRAY)
+
+            from PIL import Image
+
+            #image = Image.fromarray(grey)
+            #grey = np.array(image.resize((324, 244)).convert("L"))
+
+        filename = os.path.join(self.folder,'{:05d}.png'.format(self.i))
+            # The image data
+        cv2.imwrite(filename,rgb)
+        self.i += 1
+            # data = self.responses[i][0].image_data_uint8
+            # # Write image data
+            # with open(filename,'wb') as FILE:
+            #     # Write the bytes to file
+            #     FILE.write(grey)
+
+        print("Saving images to %s" %filename)
 
 
     def drone_pos(self):
@@ -229,17 +495,24 @@ class AirLearningClient(airsim.MultirotorClient):
 
         return np.array([xdistance, ydistance, euclidean])
 
+    def get_circle_distance(self):
+
+        pass
+
     def get_velocity(self):
         return np.array([self.client.get_velocity().x_val, self.client.get_velocity().y_val, self.client.get_velocity().z_val])
 
     def AirSim_reset(self):
+
         self.client.reset()
         time.sleep(0.2)
         self.client.enableApiControl(True)
         self.client.armDisarm(True)
         time.sleep(0.2)
-        self.client.moveByVelocityAsync(0, 0, -5, 2, drivetrain=0, vehicle_name='').join()
+        #self.goal = self.target_pos() #comment
+        self.client.moveByVelocityAsync(0, 0, -self.z, 2, drivetrain=0, vehicle_name='').join() #change to 4 when height 4
         self.client.moveByVelocityAsync(0, 0, 0, 1, drivetrain=0, vehicle_name='').join()
+
 
     def unreal_reset(self):
         self.client, connection_established = self.client.resetUnreal()
@@ -274,6 +547,11 @@ class AirLearningClient(airsim.MultirotorClient):
 
         return collided
 
+    def TotalRewards(self):
+
+        pass
+
+
         #Todo : Stabilize drone
         #self.client.moveByAngleThrottleAsync(0, 0,1,0,2).join()
 
@@ -284,6 +562,7 @@ class AirLearningClient(airsim.MultirotorClient):
         vx = math.cos(yaw) * speed
         vy = math.sin(yaw) * speed
         self.client.moveByVelocityZAsync(vx, vy, self.z, duration, 1).join()
+        print("straight, rate:" + str(speed) + " duration:"+ str(duration))
         start = time.time()
         return start, duration
 
@@ -308,7 +587,7 @@ class AirLearningClient(airsim.MultirotorClient):
         return start, duration
 
     def pitch_up(self, duration):
-        self.client.moveByVelocityZAsync(0.5,0,1,duration,0).join()
+        self.client.moveByVelocityZAsync(0.5,0,self.z,duration,0).join()
         start = time.time()
         return start, duration
 
@@ -408,7 +687,7 @@ class AirLearningClient(airsim.MultirotorClient):
             delta=0
         else:
             delta = np.random.normal(0,settings.noise_std)
-        
+
         #print(delta)
 
         # if action ==0:
@@ -419,17 +698,22 @@ class AirLearningClient(airsim.MultirotorClient):
         #     start, duration = self.move_forward_Speed(0,settings.mv_fw_spd_3+delta,settings.mv_fw_dur)    #+y
         # if action ==3:
         #     start, duration = self.move_forward_Speed(0,-settings.mv_fw_spd_3+delta,settings.mv_fw_dur)   #-y
-
+        print("Action:",action)
         if action == 0:
-            start, duration = self.straight(0.5, 0.25)  # move forward
+            start, duration = self.straight(0.5, 0.5)  # move forward #1 #0.5 for change
         if action == 1:
-            start, duration = self.yaw_right(settings.yaw_rate_1_2, 0.25)  # yaw right
+            start, duration = self.yaw_right(25, 0.05)  # yaw right
         if action == 2:
-            start, duration = self.yaw_right(settings.yaw_rate_2_4, 0.25)  # yaw left
+            start, duration = self.yaw_right(-25, 0.05)
+        # if action ==3:
+        #      self.client.hoverAsync().join()
+
+# yaw left
 
         collided = (self.client.getMultirotorState().trip_stats.collision_count > 0)
-        #print("collided:", self.client.getCollisionInfo().has_collided," timestamp:" ,self.client.getCollisionInfo().time_stamp)
+        #collided = self.client.getCollisionInfo().has_collided
+
+        #print("collided----actual:", self.client.getCollisionInfo().has_collided," timestamp:" ,self.client.getCollisionInfo().time_stamp)
         #print("collided " + str(self.client.getMultirotorState().trip_stats.collision_count > 0))
 
         return collided
-

@@ -1,6 +1,0 @@
-*.txt
-*.pyc
-*.json
-*.hf5
-*~
-machine_dependent_settings.py

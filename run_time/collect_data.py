@@ -90,8 +90,8 @@ def runTask(task):
 
     if task["task_type"] == "test_quantized":
         run_exp()
-        
-        
+
+
 
 
 def main():

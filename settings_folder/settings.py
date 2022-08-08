@@ -1,10 +1,11 @@
 import os
 import math
+from settings_folder import *
 import machine_dependent_settings as mds
 
 
 # ---------------------------
-# imports 
+# imports
 # ---------------------------
 # Augmenting the sys.path with relavant folders
 settings_file_path = os.path.realpath(__file__)
@@ -19,6 +20,7 @@ os.sys.path.insert(0, proj_root_path + "/common")
 os.sys.path.insert(0, proj_root_path + "/gym_airsim")
 os.sys.path.insert(0, proj_root_path + "/gym_airsim/envs")
 os.sys.path.insert(0, proj_root_path + "/algorithms/discrete/dqn")
+os.sys.path.insert(0, proj_root_path + "/algorithms/discrete/ppo1")
 os.sys.path.insert(0, proj_root_path + "/algorithms/continuous/ddpg")
 os.sys.path.insert(0, proj_root_path + "/algorithms/continuous/ppo")
 os.sys.path.insert(0, proj_root_path + "/algorithms/continuous/sac")
@@ -61,7 +63,7 @@ update_zone_window = 1000  # the window within which the  update_zone_accpetable
 # new window we zero out the achieved ratio
 
 
-# ------------------------------------------------------------ 
+# ------------------------------------------------------------
 #                               -space related-
 # -----------------------------------------------------------
 # ---------------------------
@@ -71,14 +73,15 @@ update_zone_window = 1000  # the window within which the  update_zone_accpetable
 default_range_dic = easy_range_dic = {"End": zone_dic["End"] * ["Mutable"],
                                       "MinimumDistance": [2],
                                       "EnvType": ["Indoor"],
-                                      "ArenaSize": [[5, 5, 20]],
+                                      "ArenaSize": [[5,7,7]],
                                       "PlayerStart": [[0, 0, 0]],
                                       "NumberOfDynamicObjects": list(range(0, 1)),
-                                      "Walls1": [[255, 255, 10]],
+                                      "Walls1": [[150, 253, 208]],
                                       "Seed": list(range(0, 10000)),
                                       "VelocityRange": [[5, 25]],
                                       "Name": ["Name"],
-                                      "NumberOfObjects": list(range(0,2))}
+                                      "NumberOfObjects": [0]}
+                                      #list(range(0,1))}
 
 medium_range_dic = {"End": zone_dic["End"] * ["Mutable"],
                     "MinimumDistance": [2],
@@ -160,8 +163,8 @@ epsilon = 1
 # ---------------------------
 use_history = False    # if true previous states are fed to network
 add_gradient = True
-CNN_time_samples = 1    # amount of total samples fed to the net
-SS_input_size = 6       # size of 1 state
+CNN_time_samples = 1    # amount of total samples fed to the net #comment this out?
+SS_input_size = 8   # size of 1 state - 4 lidar values? originally - 6
 
 velocity_noise = True
 noise_std = 0.25
@@ -197,15 +200,20 @@ backup_folder_name_style = "bu_0"  # the backup obj will create a file with this
 # ---------------------------
 # general params
 # ---------------------------``
-list_algo = ["DQN", "DDPG"]  # a new algo needs to be added to this list for backup to back up its results
-nb_max_episodes_steps = 300  # pay attention
+list_algo = ["DQN", "DDPG", "DQN-B", "PPO1","PPO2"]  # a new algo needs to be added to this list for backup to back up its results #DQN-B added Tej ,PPO2 added by prakhar
+nb_max_episodes_steps = 300  #300 # pay attention
 # assert(nb_max_episodes_steps > 16 )
-success_distance_to_goal = 1.0
+success_distance_to_goal =  0.15 #0.19 #0.15 #0.12
+#6#need to change this Tej, needs to be the minimum distance where we want our RL model to just say we have reached close enough to our goal and print a success message
 slow_down_activation_distance = 0.1 * success_distance_to_goal  # detrmines at which distant we will punish the higher velocities
 # ---------------------------
 # training params
 # ---------------------------
-training_steps_cap = 1000000
+#training_steps_cap = 1000000 #lets comment this out for now.
+training_steps_cap = 50000
+
+
+
 nb_steps_warmup = 500
 episode_count_cap = 100000
 policy = "shallow"
@@ -214,7 +222,7 @@ curriculum_learning = True
 # ---------------------------
 # testing params
 # ---------------------------
-testing_nb_episodes_per_model = 4*1000  # note that if number of zones are x, #pay attention
+testing_nb_episodes_per_model =  150 #4*1000  # note that if number of zones are x, #pay attention
 # then model get tested testing_nb_episodes_per_model/x
 # times per zone
 testing_nb_episodes_per_zone = int(testing_nb_episodes_per_model / max_zone)
@@ -232,6 +240,7 @@ window_restart_ctr_threshold = 2  # how many times we are allowed to restart the
 ease_constant = 10  # used when not meeting a zone for window_restart_ctr_threshold times. scales the randomization freq
 
 
+
 # ---------------------------
 # meta data  reload for reproducability
 # ---------------------------
@@ -242,7 +251,7 @@ meta_data_folder = "C:\workspace\zone2"
 # profiling
 #--------------------------------
 
-profile = True
+profile = True #comment and see bacause only one action tej
 
 
 #--------------------------------
@@ -256,6 +265,7 @@ ue4_winY = 480
 #--------------------------------
 # Multi-Modal Input settings
 #--------------------------------
+
 concatenate_inputs = False
 encoded_depth = True
 position = True
